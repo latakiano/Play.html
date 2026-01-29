@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تحدي المكعب المستحيل</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Arial', sans-serif; background: #222; }
+        canvas { display: block; background: linear-gradient(#111, #333); }
+        #ui { position: absolute; top: 20px; left: 20px; color: white; font-size: 24px; pointer-events: none; }
+        #msg { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+               color: white; text-align: center; display: none; background: rgba(0,0,0,0.8); padding: 20px; border-radius: 10px; }
+        button { padding: 10px 20px; font-size: 18px; cursor: pointer; background: #27ae60; color: white; border: none; border-radius: 5px; }
+    </style>
+</head>
+<body>
+
+<div id="ui">السكور: <span id="score">0</span></div>
+<div id="msg">
+    <h1>جيم أوفر!</h1>
+    <p>لقد خسرت، حاول مرة أخرى لتحطم الرقم القياسي.</p>
+    <button onclick="resetGame()">إعادة المحاولة</button>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+const msgEl = document.getElementById('msg');
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let score = 0;
+let gameActive = true;
+
+// اللاعب
+const player = {
+    x: 50,
+    y: canvas.height / 2,
+    size: 30,
+    velocity: 0,
+    gravity: 0.6,
+    jump: -10
+};
+
+// العوائق
+let pipes = [];
+const pipeWidth = 50;
+const pipeGap = 170; // الفجوة (اجعلها أصغر لتكون اللعبة أصعب)
+
+function createPipe() {
+    let height = Math.random() * (canvas.height - pipeGap - 100) + 50;
+    pipes.push({
+        x: canvas.width,
+        top: height,
+        bottom: canvas.height - height - pipeGap,
+        passed: false
+    });
+}
+
+function update() {
+    if (!gameActive) return;
+
+    player.velocity += player.gravity;
+    player.y += player.velocity;
+
+    // الاصطدام بالأرض أو السقف
+    if (player.y + player.size > canvas.height || player.y < 0) {
+        gameOver();
+    }
+
+    if (pipes.length === 0 || pipes[pipes.length - 1].x < canvas.width - 300) {
+        createPipe();
+    }
+
+    pipes.forEach((pipe, index) => {
+        pipe.x -= 5; // سرعة اللعبة
+
+        // كشف الاصطدام
+        if (
+            player.x < pipe.x + pipeWidth &&
+            player.x + player.size > pipe.x &&
+            (player.y < pipe.top || player.y + player.size > canvas.height - pipe.bottom)
+        ) {
+            gameOver();
+        }
+
+        // احتساب النقاط
+        if (!pipe.passed && pipe.x < player.x) {
+            score++;
+            scoreEl.innerText = score;
+            pipe.passed = true;
+        }
+
+        if (pipe.x + pipeWidth < 0) pipes.splice(index, 1);
+    });
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // رسم اللاعب
+    ctx.fillStyle = '#00d2ff';
+    ctx.fillRect(player.x, player.y, player.size, player.size);
+
+    // رسم العوائق
+    ctx.fillStyle = '#ff4b2b';
+    pipes.forEach(pipe => {
+        ctx.fillRect(pipe.x, 0, pipeWidth, pipe.top);
+        ctx.fillRect(pipe.x, canvas.height - pipe.bottom, pipeWidth, pipe.bottom);
+    });
+
+    requestAnimationFrame(() => {
+        update();
+        draw();
+    });
+}
+
+function gameOver() {
+    gameActive = false;
+    msgEl.style.display = 'block';
+}
+
+function resetGame() {
+    player.y = canvas.height / 2;
+    player.velocity = 0;
+    pipes = [];
+    score = 0;
+    scoreEl.innerText = score;
+    gameActive = true;
+    msgEl.style.display = 'none';
+}
+
+// التحكم باللمس أو الضغط
+window.addEventListener('keydown', (e) => { if (e.code === 'Space') player.velocity = player.jump; });
+canvas.addEventListener('touchstart', () => { player.velocity = player.jump; });
+
+draw();
+</script>
+</body>
+</html>
