@@ -1,25 +1,35 @@
 <!DOCTYPE html>
-<html lang="ar">
+<html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>تحدي المكعب المستحيل</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>تحدي الصمود - العب الآن</title>
     <style>
-        body { margin: 0; overflow: hidden; font-family: 'Arial', sans-serif; background: #222; }
-        canvas { display: block; background: linear-gradient(#111, #333); }
-        #ui { position: absolute; top: 20px; left: 20px; color: white; font-size: 24px; pointer-events: none; }
-        #msg { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
-               color: white; text-align: center; display: none; background: rgba(0,0,0,0.8); padding: 20px; border-radius: 10px; }
-        button { padding: 10px 20px; font-size: 18px; cursor: pointer; background: #27ae60; color: white; border: none; border-radius: 5px; }
+        body { margin: 0; padding: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        canvas { display: block; cursor: crosshair; }
+        #overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            color: white; background: rgba(0,0,0,0.7); display: none;
+        }
+        .stats { position: absolute; top: 20px; right: 20px; color: #fff; font-size: 22px; text-shadow: 2px 2px 4px #000; }
+        button {
+            padding: 15px 40px; font-size: 20px; cursor: pointer; background: #f39c12;
+            color: white; border: none; border-radius: 50px; transition: 0.3s; box-shadow: 0 5px 15px rgba(243,156,18,0.4);
+        }
+        button:hover { background: #e67e22; transform: scale(1.1); }
     </style>
 </head>
 <body>
 
-<div id="ui">السكور: <span id="score">0</span></div>
-<div id="msg">
-    <h1>جيم أوفر!</h1>
-    <p>لقد خسرت، حاول مرة أخرى لتحطم الرقم القياسي.</p>
-    <button onclick="resetGame()">إعادة المحاولة</button>
+<div class="stats">
+    النقاط: <span id="currentScore">0</span> | أعلى سكور: <span id="bestScore">0</span>
+</div>
+
+<div id="overlay">
+    <h1 id="statusText">انتهت اللعبة!</h1>
+    <p style="font-size: 20px;">سكورك الحالي: <span id="finalScore">0</span></p>
+    <button onclick="startGame()">العب مجدداً</button>
 </div>
 
 <canvas id="gameCanvas"></canvas>
@@ -27,118 +37,103 @@
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-const scoreEl = document.getElementById('score');
-const msgEl = document.getElementById('msg');
+const currentScoreEl = document.getElementById('currentScore');
+const bestScoreEl = document.getElementById('bestScore');
+const finalScoreEl = document.getElementById('finalScore');
+const overlay = document.getElementById('overlay');
 
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
-let score = 0;
-let gameActive = true;
+let bird, pipes, frame, score, gameRunning;
+let highScor = localStorage.getItem('cubeHighScore') || 0;
+bestScoreEl.innerText = highScor;
 
-// اللاعب
-const player = {
-    x: 50,
-    y: canvas.height / 2,
-    size: 30,
-    velocity: 0,
-    gravity: 0.6,
-    jump: -10
-};
+function init() {
+    bird = { x: 50, y: canvas.height/2, size: 25, gravity: 0.6, lift: -10, velocity: 0 };
+    pipes = [];
+    frame = 0;
+    score = 0;
+    gameRunning = true;
+    overlay.style.display = 'none';
+}
 
-// العوائق
-let pipes = [];
-const pipeWidth = 50;
-const pipeGap = 170; // الفجوة (اجعلها أصغر لتكون اللعبة أصعب)
+function drawBird() {
+    ctx.fillStyle = '#00f2fe';
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = '#00f2fe';
+    ctx.fillRect(bird.x, bird.y, bird.size, bird.size);
+    ctx.shadowBlur = 0;
+}
 
-function createPipe() {
-    let height = Math.random() * (canvas.height - pipeGap - 100) + 50;
-    pipes.push({
-        x: canvas.width,
-        top: height,
-        bottom: canvas.height - height - pipeGap,
-        passed: false
+function drawPipes() {
+    pipes.forEach(pipe => {
+        ctx.fillStyle = `hsl(${frame % 360}, 70%, 50%)`; // لون يتغير تدريجياً
+        ctx.fillRect(pipe.x, 0, 60, pipe.top);
+        ctx.fillRect(pipe.x, canvas.height - pipe.bottom, 60, pipe.bottom);
     });
 }
 
 function update() {
-    if (!gameActive) return;
+    if (!gameRunning) return;
 
-    player.velocity += player.gravity;
-    player.y += player.velocity;
+    bird.velocity += bird.gravity;
+    bird.y += bird.velocity;
 
-    // الاصطدام بالأرض أو السقف
-    if (player.y + player.size > canvas.height || player.y < 0) {
-        gameOver();
+    if (frame % 90 === 0) {
+        let spacing = 180;
+        let top = Math.random() * (canvas.height - spacing - 100) + 50;
+        pipes.push({ x: canvas.width, top: top, bottom: canvas.height - top - spacing });
     }
 
-    if (pipes.length === 0 || pipes[pipes.length - 1].x < canvas.width - 300) {
-        createPipe();
-    }
-
-    pipes.forEach((pipe, index) => {
-        pipe.x -= 5; // سرعة اللعبة
-
-        // كشف الاصطدام
-        if (
-            player.x < pipe.x + pipeWidth &&
-            player.x + player.size > pipe.x &&
-            (player.y < pipe.top || player.y + player.size > canvas.height - pipe.bottom)
-        ) {
-            gameOver();
-        }
-
-        // احتساب النقاط
-        if (!pipe.passed && pipe.x < player.x) {
+    pipes.forEach((pipe, i) => {
+        pipe.x -= 4;
+        if (pipe.x + 60 < 0) {
+            pipes.splice(i, 1);
             score++;
-            scoreEl.innerText = score;
-            pipe.passed = true;
+            currentScoreEl.innerText = score;
         }
 
-        if (pipe.x + pipeWidth < 0) pipes.splice(index, 1);
-    });
-}
-
-function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // رسم اللاعب
-    ctx.fillStyle = '#00d2ff';
-    ctx.fillRect(player.x, player.y, player.size, player.size);
-
-    // رسم العوائق
-    ctx.fillStyle = '#ff4b2b';
-    pipes.forEach(pipe => {
-        ctx.fillRect(pipe.x, 0, pipeWidth, pipe.top);
-        ctx.fillRect(pipe.x, canvas.height - pipe.bottom, pipeWidth, pipe.bottom);
+        // Collision detection
+        if (bird.x < pipe.x + 60 && bird.x + bird.size > pipe.x &&
+            (bird.y < pipe.top || bird.y + bird.size > canvas.height - pipe.bottom)) {
+            endGame();
+        }
     });
 
-    requestAnimationFrame(() => {
-        update();
-        draw();
-    });
+    if (bird.y > canvas.height || bird.y < 0) endGame();
+    frame++;
 }
 
-function gameOver() {
-    gameActive = false;
-    msgEl.style.display = 'block';
+function loop() {
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    drawPipes();
+    drawBird();
+    update();
+    if (gameRunning) requestAnimationFrame(loop);
 }
 
-function resetGame() {
-    player.y = canvas.height / 2;
-    player.velocity = 0;
-    pipes = [];
-    score = 0;
-    scoreEl.innerText = score;
-    gameActive = true;
-    msgEl.style.display = 'none';
+function endGame() {
+    gameRunning = false;
+    if (score > highScor) {
+        highScor = score;
+        localStorage.setItem('cubeHighScore', highScor);
+        bestScoreEl.innerText = highScor;
+    }
+    finalScoreEl.innerText = score;
+    overlay.style.display = 'flex';
 }
 
-// التحكم باللمس أو الضغط
-window.addEventListener('keydown', (e) => { if (e.code === 'Space') player.velocity = player.jump; });
-canvas.addEventListener('touchstart', () => { player.velocity = player.jump; });
+function startGame() {
+    init();
+    loop();
+}
 
-draw();
+window.addEventListener('keydown', (e) => { if(e.code === 'Space') bird.velocity = bird.lift; });
+window.addEventListener('touchstart', () => { bird.velocity = bird.lift; });
+
+startGame();
 </script>
 </body>
 </html>
